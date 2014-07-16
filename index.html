@@ -1,0 +1,186 @@
+<html>
+	<head>
+		<title>Multisnake</title>
+		<script src="/socket.io.js"></script>
+		<!--<script src="http://10.110.0.132:8001/socket.io/socket.io.js"></script>-->
+		<script src="/rtc.js"></script>
+		<script src="/game.js"></script>
+		<script src="/player.js"></script>
+		<script src="/pickup.js"></script>
+		<script type="text/javascript">
+			var rtc = null;
+			var snake = null;
+			var score = null;
+
+			window.onload = function() {
+				score = document.getElementById('score');
+
+				rtc = new RTCManager();
+				rtc.connect();
+				connectedToPeer = function(id) {
+					console.log('connected to ' + id);
+					snake.startGame();
+				}
+				receiveFromPeer = function(id, message) {
+					switch(message.type) {
+						case 'player':
+							snake.setOpponent(id, message.data);
+							break;
+						case 'pickup':
+							snake.setPickups(id, message.data);
+							break;
+						case 'pickedup':
+							snake.setLocalPickups(message.data);
+							break;
+					}
+				}
+				diconnectedFromPeer = function(id) {
+					console.log('player ' + id + ' disconnected from the game');
+					snake.removeOpponent(id);
+					snake.removePickups(id);
+				}
+
+				snake = new MultiSnake();
+				snake.init();
+				snake.updated = function() {
+					updateScore();
+
+					rtc.sendToPeer({type: 'player', data: snake.getPlayer()});
+					rtc.sendToPeer({type: 'pickup', data: snake.getPickups()});
+				}
+				snake.pickedUpRemote = function(id, pickup_id) {
+					rtc.sendToSpecificPeer(id, {type: 'pickedup', data: pickup_id});
+				}
+			}
+			window.addEventListener("keydown", function (e) {
+				switch(e.keyCode) {
+					case 37:
+						snake.changeDirection(MultiSnake.directions.left);
+						break;
+					case 38:
+						snake.changeDirection(MultiSnake.directions.up);
+						break;
+					case 39:
+						snake.changeDirection(MultiSnake.directions.right);
+						break;
+					case 40:
+						snake.changeDirection(MultiSnake.directions.down);
+						break;
+				}
+			}, false);
+
+			
+			var _pause = function() {
+				rtc.pause();
+				snake.pause();
+			}
+			window.onblur = _pause;
+			window.onoffline = _pause;
+			window.onpagehide = _pause;
+			window.onfocus = function() {
+				snake.unpause();
+			}
+
+
+			var updateScore = function() {
+				score.innerHTML = "";
+
+				updateOrCreateScore('you', snake.getPlayer());
+
+				for (var opponent_id in snake.getOpponents()) {
+					if (opponent_id == -1)
+						continue;
+					var opponent = snake.getOpponents()[opponent_id].getPlayer();
+					updateOrCreateScore(opponent_id, opponent);
+				}
+			}
+			var updateOrCreateScore = function(name, player) {
+				var item = document.getElementById(name);
+				if (!item) {
+					item = document.createElement("div");
+					item.setAttribute("id", name);
+					item.setAttribute("class", "score");
+					item.style.width= "50px";
+					item.style.height= "50px";
+					item.style.display= "inline-block";
+					score.appendChild(item);
+				}
+				item.style.background = player.color;
+				item.innerHTML = player.score;
+			}
+
+			var drawRect = function(context, x, y, w, h, fill_color, stroke_color, blur_size) {
+				context.save();
+				context.beginPath();
+				if (blur_size) {
+					context.shadowBlur = blur_size;
+					if (stroke_color)
+						context.shadowColor = stroke_color;
+					else
+						context.shadowColor = fill_color;
+				}
+				context.fillStyle = fill_color;
+				context.strokeStyle = stroke_color;
+				context.rect(x, y, w, h);
+				if (fill_color)
+					context.fill();
+				if (stroke_color)
+					context.stroke();
+				context.restore();
+			}
+			var drawCircle = function(context, x, y, w, h, fill_color, stroke_color, blur_size) {
+				context.save();
+				context.beginPath();
+				if (blur_size) {
+					context.shadowBlur = blur_size;
+					context.shadowColor = fill_color;
+				}
+				context.fillStyle = fill_color;
+				context.strokeStyle = stroke_color;
+				context.lineWidth = 2;
+				context.arc(x + (w / 2), y + (h / 2), w / 2, 0, 2 * Math.PI, false);
+				if (fill_color)
+					context.fill();
+				if (stroke_color)
+					context.stroke();
+				context.restore();
+			}
+			var canvas_arrow = function(context, fromx, fromy, tox, toy){
+				context.save();
+				context.beginPath();
+				context.lineWidth = 2;
+				context.strokeStyle="rgb(230,230,230)";
+			    var headlen = 7;   // length of head in pixels
+			    var angle = Math.atan2(toy-fromy,tox-fromx);
+			    context.moveTo(fromx, fromy);
+			    context.lineTo(tox, toy);
+			    context.moveTo(tox, toy);
+			    context.lineTo(tox-headlen*Math.cos(angle-Math.PI/6),toy-headlen*Math.sin(angle-Math.PI/6));
+			    context.moveTo(tox, toy);
+			    context.lineTo(tox-headlen*Math.cos(angle+Math.PI/6),toy-headlen*Math.sin(angle+Math.PI/6));
+			    context.stroke();
+				context.restore();
+			}
+		</script>
+		<style type="text/css">
+			html, body {
+				margin: 0px;
+				padding: 0px;
+				background: rgb(40, 40, 40);
+			}
+			#container {
+				margin-top: 50px;
+				margin-left: calc(50% - 300px);
+			}
+			.score {
+				text-align: center;
+			}
+		</style>
+	</head>
+	<body>
+		<div id="container">
+			<div id="score">
+			</div>
+		</div>
+	</body>
+	</html>
